@@ -18,14 +18,16 @@ This is executable by a fresh Claude Code session. Each step says what to reuse 
 
 ## Step 1 — Establish court homography (once per camera)
 
-**Reuse:** `BasketTracking-1/rectify_court.py:96–209` (auto court-corner detect → `getPerspectiveTransform`). **Fallback:** 4 manual court-corner clicks like `uball_court_mapping/app/services/calibration_integration.py` (`cv2.findHomography`).
+> **STATUS (2026-05-17): tooling DONE & runnable; usable H BLOCKED on a clean calibration pass. Full execution notes + the blocking finding: [`05_STEP1_NOTES.md`](05_STEP1_NOTES.md).** Net: `BasketTracking-1`'s auto-corner detect was rejected (`cv2.xfeatures2d` broken on cv2 4.12 + fragile on game frames); we vendored `calibration_integration.py` and built `demo/extract_frame.py` + `demo/calibrate_homography.py` (interactive + headless modes). The FL camera occludes the far baseline and has no near-court landmarks → a clean empty-court calibration frame + operator click pass is required next.
 
-- Pick one representative frame from the wide-angle video.
-- Get 4+ court-landmark correspondences (corners, center circle, free-throw line intersections) between image pixels and real court coords (a standard court is ~28 m × 15 m FIBA, or use the DXF in `uball_court_mapping` = 2460×1730 cm).
-- Compute + **cache** the 3×3 homography matrix `H` to a file (`demo/calibration/<game>_H.npy`).
-- Sanity check: project the 4 corners back, overlay on the frame, confirm they land on the real court lines.
+**Reuse:** vendored `uball_court_mapping/app/services/calibration_integration.py` (`cv2.findHomography`, cv2 4.12 clean) — now at `demo/lib/calibration_integration.py`. (`BasketTracking-1/rectify_court.py` auto-detect **rejected** — see notes.)
 
-**Output:** `demo/calibration/<game>_H.npy` + a sanity-overlay JPG.
+- Pick a **player-free** frame (pre-game / timeout) — H is camera-fixed so the calibration frame need not be a gameplay frame; an empty court avoids occluded painted lines. `python demo/extract_frame.py --angle FL --t <empty_t>`.
+- `python demo/calibrate_homography.py --frame <f> --interactive` — click the named landmarks (`court.LANDMARKS_CM`): painted key corners + free-throw line + center-logo ellipse + visible sideline points. Pick **well-spread coplanar floor** points (not the elevated hoop/backboard). Court space = NBA 2865×1524 cm (the vendored core's system; metric exactness not required for uniform dots, only consistency).
+- It caches `demo/calibration/<stem>_H.npy` + `_calibration.json` + reusable `_corr.json`, and writes `_overlay.jpg` (court lines reprojected onto frame) + `_topdown.jpg` (frame warped to court).
+- Sanity check: in `_overlay.jpg` the green lines must sit on the painted court **across the whole floor**, not just near the picked cluster.
+
+**Output:** `demo/calibration/<stem>_H.npy` + sanity overlays. (This pass produced placeholder key-only artifacts — see notes; re-run is a drop-in.)
 
 ---
 

@@ -1,0 +1,20 @@
+{
+  "landmarks": {
+    "L_lane_base_top": [
+      745,
+      545
+    ],
+    "L_lane_base_bot": [
+      1128,
+      530
+    ],
+    "L_ft_top": [
+      698,
+      690
+    ],
+    "L_ft_bot": [
+      1178,
+      686
+    ]
+  }
+}
