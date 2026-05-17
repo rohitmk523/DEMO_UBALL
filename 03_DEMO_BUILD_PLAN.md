@@ -1,6 +1,8 @@
 # 03 — Demo Build Plan: Synced Video + Court Map
 
-Goal: one self-contained output mp4 — left panel = processed game video with shot events overlaid, right panel = top-down 2D court with players as jersey-colored dots, perfectly time-synced.
+Goal: one self-contained output mp4 — left panel = processed game video with shot events overlaid, right panel = top-down 2D court with players as **uniform-colored dots** (every player the same color), perfectly time-synced.
+
+> **Scope decision (2026-05-17):** team-color split is **deferred**. For this demo every player is the *same* color dot — this is enough to show players moving on the court side-by-side with the real video. Jersey-color → team classification comes later, after a dedicated color-training pass. This removes the previously #1 demo risk from the critical path.
 
 This is executable by a fresh Claude Code session. Each step says what to reuse vs. build.
 
@@ -43,28 +45,26 @@ For each frame:
 
 ---
 
-## Step 3 — Jersey-color → team classification
+## Step 3 — Player color (DEFERRED — uniform color for this demo)
 
-**Reuse:** `BasketTracking-1/player_detection.py:15–19` (HSV ranges) + the classify logic in `:73–188`.
+**For this demo: skip team classification entirely.** Every player dot is rendered in **one fixed color** (e.g. white or cyan). No HSV sampling, no torso region, no clustering. This is a deliberate scope cut — see the scope decision at the top.
 
-- For each player bbox, sample the **torso region** (upper-middle of the bbox, avoid head/legs/background).
-- Convert to HSV, test against the two team color ranges.
-- **Critical:** the hard-coded green/red ranges are placeholders. Either:
-  - (a) auto-cluster: sample torso colors across ~50 frames, k-means(k=2) in HSV → two team centroids, OR
-  - (b) config: expose `team_a_hsv`, `team_b_hsv` ranges, set them by eyeballing one frame.
-- Assign each track a stable team via majority vote over its lifetime (a track shouldn't flip teams frame-to-frame).
+- Implementation: a single constant `PLAYER_DOT_COLOR` used for all tracks in Step 4.
+- Keep the per-track `track_id` so dots are still individually trackable (and so a later pass can attach a team label without re-running detection).
 
-**Output:** augment `<game>_tracks.json` with `team: "A"|"B"|"unknown"` per track.
+**Output:** `<game>_tracks.json` is used as-is from Step 2 — no team field.
+
+**Later (post-training, NOT this demo):** re-enable jersey-color → team classification by reusing `BasketTracking-1/player_detection.py:15–19` (HSV ranges) + classify logic `:73–188`, with auto-cluster (k-means k=2 on torso HSV across ~50 frames) + majority-vote per track + an `unknown` class. Adds a `team: "A"|"B"|"unknown"` field; Step 4 then maps team → color instead of the constant. The user will supply trained team colors at that point.
 
 ---
 
 ## Step 4 — Render the synced side-by-side
 
-**Reuse:** `uball_court_mapping/app/services/video_stitcher.py` — `create_stitched_frame()` (:133), the dot renderer (:204–205), and `uwb_to_vertical_screen()` for the court-canvas transform. **Swap** the color source: `persistent_id_mapper.py`'s per-tag color → per-**team** color from Step 3.
+**Reuse:** `uball_court_mapping/app/services/video_stitcher.py` — `create_stitched_frame()` (:133), the dot renderer (:204–205), and `uwb_to_vertical_screen()` for the court-canvas transform. **Simplify** the color source: replace `persistent_id_mapper.py`'s per-tag color lookup with the single constant `PLAYER_DOT_COLOR`. (This is *less* work than the original per-team swap — the mapper can be bypassed entirely.)
 
 Per frame:
 - Left panel: the game video frame. Overlay any shot event active at this timestamp (Step 5).
-- Right panel: a clean top-down court diagram (draw court lines once as a static background; reuse the DXF geometry from `uball_court_mapping/app/services/dxf_parser.py` or just hardcode a FIBA court). For each tracked player: `cv2.circle(court_canvas, project(court_xy), R, TEAM_COLOR, -1)` + white outline. Optionally a short fading trail (last ~15 positions).
+- Right panel: a clean top-down court diagram (draw court lines once as a static background; reuse the DXF geometry from `uball_court_mapping/app/services/dxf_parser.py` or just hardcode a FIBA court). For each tracked player: `cv2.circle(court_canvas, project(court_xy), R, PLAYER_DOT_COLOR, -1)` + contrasting outline (same color for every player). Optionally a short fading trail (last ~15 positions).
 - Concatenate panels horizontally, write to `cv2.VideoWriter` at the source FPS.
 
 **Output:** `demo/<game>_demo.mp4`.
@@ -94,12 +94,12 @@ Per frame:
 |---|---|---|
 | 1 Homography | reuse `BasketTracking-1` (+ manual fallback) | 0.5 day |
 | 2 Detect+track+project | reuse `uball_court_mapping` services | 0.5 day |
-| 3 Jersey-color teams | reuse `BasketTracking-1` HSV + add auto-cluster | 1 day (tuning is the cost) |
-| 4 Side-by-side render | reuse `video_stitcher.py`, swap color source | 1 day |
+| 3 Player color | **deferred — uniform color, ~0** | ~0 (one constant) |
+| 4 Side-by-side render | reuse `video_stitcher.py`, bypass color mapper | 1 day |
 | 5 Shot-event overlay | new, small | 0.5 day |
 | 6 Package | trivial | 0.25 day |
 
-**Total ≈ 3.5–4 days** for a polished client demo, mostly reuse + glue. The risky/iterative part is Step 3 (jersey color robustness under varying lighting) — budget the most time there and test on 2+ games.
+**Total ≈ 2.5–3 days** for a polished client demo, mostly reuse + glue. Dropping team classification removes the previously dominant cost/risk (Step 3 jersey tuning), shaving ~1 day off the original 3.5–4 day estimate. Remaining iterative part is homography accuracy at the far court end (Step 1).
 
 ---
 
@@ -111,8 +111,8 @@ Use **c2a354fe** (2026-03-19): we already have its fused shot output with **100%
 
 ## Risks / gotchas
 
-1. **Jersey color under gym lighting** — the single biggest risk. Two teams in similar colors, or shadows, break HSV classification. Mitigation: auto-cluster (Step 3a) + majority-vote per track + an "unknown" class rather than forcing a wrong team.
-2. **Players occluding each other** — ByteTrack handles most ID continuity; SAM2 mask refinement (available in `uball_court_mapping`) helps if dots merge/jump. Enable it if needed (slower).
-3. **Homography accuracy at far court end** — perspective error grows with distance from camera. Foot-point projection (not centroid) mitigates. Validate dots land plausibly at both ends.
+1. ~~Jersey color under gym lighting~~ — **no longer applicable to this demo** (uniform dots). Will become the dominant risk when team classification is re-enabled post-training; the auto-cluster + majority-vote + "unknown"-class mitigation is documented in Step 3's "Later" note for that phase.
+2. **Homography accuracy at far court end** — now the #1 risk. Perspective error grows with distance from camera. Foot-point projection (not centroid) mitigates. Validate dots land plausibly at both ends.
+3. **Players occluding each other** — ByteTrack handles most ID continuity; SAM2 mask refinement (available in `uball_court_mapping`) helps if dots merge/jump. Enable it if needed (slower). With uniform dots a brief ID swap is visually harmless (same color), so this is lower-stakes for this demo.
 4. **Sync drift** — drive both panels off the *same* frame index / source FPS. Don't independently time the two streams.
-5. **Don't over-scope** — first deliverable is one pre-rendered mp4 on one game. No live processing, no UI, no multi-court. Land that, then iterate.
+5. **Don't over-scope** — first deliverable is one pre-rendered mp4 on one game, uniform dots. No team colors, no live processing, no UI, no multi-court. Land that, then iterate.

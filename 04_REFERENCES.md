@@ -14,12 +14,12 @@ Copy-paste index of every reusable piece. Verdicts: **COPY** (use ~verbatim) · 
 | `uball_court_mapping/app/services/bytetrack_tracker.py` | **COPY** | ByteTrack tracking |
 | `uball_court_mapping/app/services/calibration_integration.py` | **ADAPT** | `cv2.findHomography` — use for manual 4-point fallback |
 | `uball_court_mapping/app/services/dxf_parser.py` | **REF** | real court geometry (2460×1730 cm) if you want exact dims |
-| `uball_court_mapping/app/services/persistent_id_mapper.py` | **ADAPT** | currently per-tag color → change to per-team |
+| `uball_court_mapping/app/services/persistent_id_mapper.py` | **SKIP (this demo)** | per-tag color — bypass entirely, use one constant `PLAYER_DOT_COLOR`. ADAPT to per-team only in the later team-color phase |
 | `uball_court_mapping/app/services/sam2_segmenter.py` | **REF** | optional mask refine if dots jitter |
 | `BasketTracking-1/rectify_court.py:96–157` | **COPY** | auto court-corner detection |
 | `BasketTracking-1/rectify_court.py:160–209` | **COPY** | homography → top-down (`getPerspectiveTransform`/`warpPerspective`) |
-| `BasketTracking-1/player_detection.py:15–19` | **ADAPT** | HSV team color ranges — RE-TUNE per game, don't assume green/red |
-| `BasketTracking-1/player_detection.py:73–188` | **COPY** | `get_players_pos()` — project + jersey-classify + draw dot (:175) |
+| `BasketTracking-1/player_detection.py:15–19` | **DEFER** | HSV team color ranges — not used this demo; RE-TUNE per game in the later team-color phase, don't assume green/red |
+| `BasketTracking-1/player_detection.py:73–188` | **ADAPT** | `get_players_pos()` — reuse the project + draw-dot path (:175); **skip the jersey-classify branch** this demo (uniform color). Full COPY incl. classify only in the later phase |
 | `BasketTracking-1/main.py:42–80` | **REF** | pipeline flow reference |
 | `BasketTracking-1/tools/plot_tools.py:5–12` | **REF** | matplotlib helper |
 | `BasketTracking-1/Rectify1.npy` / `RectifyL.npy` / `RectifyR.npy` | **REF** | precomputed matrices (camera-specific — recompute for our cameras) |
@@ -81,7 +81,7 @@ Operator ground truth for c2a354fe (for credibility numbers): Firebase `basketba
 ## Repo-rank summary (for "where do I start")
 
 1. **`uball_court_mapping/`** — best side-by-side rendering scaffold (proven `*_stitched.mp4` outputs). Start here for the render pipeline.
-2. **`BasketTracking-1/`** — best jersey-color team classifier + auto-homography. Lift the team-color + court-projection code into the scaffold.
+2. **`BasketTracking-1/`** — for this demo, lift **only the auto-homography + court-projection** code into the scaffold. Its jersey-color team classifier is the reuse target for the *deferred* team-color phase, not now.
 3. `Uball_dual_angle_fusion/` — produces the shot events to overlay (consume `detection_results.json`, don't modify).
 4. Everything else — reference or skip.
 

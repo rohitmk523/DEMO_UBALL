@@ -1,6 +1,8 @@
 # 02 — Court Mapping & Player Tracking: Where the Code Is
 
-The demo needs players rendered as **jersey-colored dots on a top-down 2D court**, synced to the game video. This doc maps every relevant codebase so the build reuses proven components.
+The demo needs players rendered as **dots on a top-down 2D court**, synced to the game video. This doc maps every relevant codebase so the build reuses proven components.
+
+> **Scope decision (2026-05-17):** for this demo all players are **one uniform color** — jersey-color → team split is deferred to a post-training pass. The jersey-color sections below are kept as the reference for that *later* phase, not the current build. See `03_DEMO_BUILD_PLAN.md` Step 3.
 
 ---
 
@@ -13,7 +15,7 @@ The demo needs players rendered as **jersey-colored dots on a top-down 2D court*
 | **`Uball_tracking/`** | Clean tracking-only package (YOLO+SAM2+ByteTrack), no court projection | ❌ no | ❌ no | ❌ none | tracking only — skip for court map |
 | `trackingStudio/` | Dual-camera FastAPI, DeepSORT, BEV view, cross-camera merge | ✅ yes (BEV) | ❌ no | 4-corner per camera | alternative; weaker cross-cam re-ID |
 
-**Strategy: combine the two best.** Use `uball_court_mapping`'s side-by-side stitching scaffold + `BasketTracking-1`'s jersey-color team classifier + homography. Neither alone is complete; together they cover the whole demo.
+**Strategy (current demo, uniform dots):** `uball_court_mapping`'s side-by-side stitching scaffold + `BasketTracking-1`'s **homography only** (auto court-corner detect). The jersey-color classifier from `BasketTracking-1` is **not used now** — it's the reuse target for the *later* team-color phase. So the current build leans almost entirely on `uball_court_mapping` plus one homography helper.
 
 ---
 
@@ -34,13 +36,13 @@ FastAPI app; the pipeline orchestrator is `persistent_id_tracking.py`.
 
 **Existing outputs (proof it works):** `video_output/GX010018_..._bytetrack_sam_stitched.mp4` (~770 MB dual-panel files: video left, court+dots right).
 
-**Gap:** colors dots by UWB `tag_id`, not jersey. The demo has no UWB tags → must replace the coloring source with jersey-color team classification (from repo B).
+**Gap (now trivial):** it colors dots by UWB `tag_id`. The demo has no UWB tags → just bypass `persistent_id_mapper.py` and render every dot with one constant color. (The harder "replace with jersey-color team classification" path is deferred — see scope decision above.)
 
 ---
 
-## B. `BasketTracking-1/` — jersey-color + homography (reuse this for team coloring)
+## B. `BasketTracking-1/` — homography now; jersey-color later
 
-This repo has the **actual jersey-color team classifier and a working 2D court projection**.
+For the **current demo** only the homography parts (`rectify_court.py`) are reused. The jersey-color classifier rows below are the reuse target for the **deferred** team-color phase — listed here so that later pass doesn't have to re-discover them.
 
 | File:line | What it does |
 |---|---|
@@ -71,15 +73,15 @@ This repo has the **actual jersey-color team classifier and a working 2D court p
             ┌─────────────────────────── game video (FR or wide angle) ──────────────────────────┐
             │                                                                                     │
    ┌────────▼─────────┐     ┌──────────────────────┐     ┌───────────────────────────────────┐
-   │ player detection │ ──▶ │ homography (court     │ ──▶ │ jersey-color team classify        │
-   │ (YOLOv11)        │     │  corners → top-down)  │     │ (HSV sample on bbox torso)        │
-   │ uball_court_     │     │ BasketTracking-1      │     │ BasketTracking-1                  │
-   │  mapping          │     │  rectify_court.py     │     │  player_detection.py:15-19,73-188 │
+   │ player detection │ ──▶ │ homography (court     │ ──▶ │ uniform color (one constant)      │
+   │ (YOLOv11)        │     │  corners → top-down)  │     │ — team classify DEFERRED          │
+   │ uball_court_     │     │ BasketTracking-1      │     │ (later: BasketTracking-1          │
+   │  mapping          │     │  rectify_court.py     │     │  player_detection.py:15-19,73-188)│
    └──────────────────┘     └──────────────────────┘     └────────────────┬──────────────────┘
                                                                            │
    ┌──────────────────────────────────────────────────────────────────────▼──────────────────┐
-   │ video_stitcher.py:create_stitched_frame()  → [ game frame | top-down court w/ team dots ] │
-   │ uball_court_mapping  (swap per-tag color → per-team color)                                │
+   │ video_stitcher.py:create_stitched_frame()  → [ game frame | top-down court w/ dots ]      │
+   │ uball_court_mapping  (bypass per-tag mapper → one constant PLAYER_DOT_COLOR)              │
    └───────────────────────────────────────────────┬──────────────────────────────────────────┘
                                                     │
    ┌────────────────────────────────────────────────▼──────────────────────────────────────────┐
@@ -95,6 +97,6 @@ The build plan that wires these together is **[`03_DEMO_BUILD_PLAN.md`](03_DEMO_
 ## Key open questions for the build session
 
 1. **Homography per camera**: production cameras are static. Establish the court→image homography **once per camera** (4+ court-corner correspondences), cache it. `BasketTracking-1/rectify_court.py:96–157` auto-detects corners; if it's unreliable on our footage, fall back to 4 manual clicks (the `uball_court_mapping` calibration UI does exactly this).
-2. **Jersey-color ranges are game-specific**: the HSV ranges in `player_detection.py:15–19` are hard-coded. The build must sample the two actual team colors from a frame (or expose them as config) — don't assume green/red.
+2. ~~Jersey-color ranges are game-specific~~ — **N/A for this demo** (uniform dots). Relevant only when team classification is re-enabled post-training; at that point sample the two actual team colors per game (or use the user's trained colors), don't assume green/red.
 3. **Which video angle for the court map**: the far/wide angle (FR or a dedicated wide cam) sees the whole court — best for player→court projection. The near angle is too zoomed. Confirm which S3 angle gives full-court coverage.
 4. **Foot point, not bbox center**: project the *bottom-center* of each player bbox (where they touch the floor) through the homography, not the centroid — otherwise tall players map deeper into the court than they stand.

@@ -2,7 +2,9 @@
 
 This repo holds the **plan + reference map** for a client-facing demo:
 
-> A processed basketball game video plays **side-by-side** with a top-down 2D court diagram. Players appear as **dots colored by jersey/team**, moving in sync with the video. Shot events (made/missed) from the CV pipeline are overlaid.
+> A processed basketball game video plays **side-by-side** with a top-down 2D court diagram. Players appear as **uniform-colored dots** (every player the same color for this demo), moving in sync with the video. Shot events (made/missed) from the CV pipeline are overlaid.
+
+> **Scope decision (2026-05-17):** team-color split is **deferred** to a post-training pass — the current demo uses one color for all players. This is enough to prove spatial tracking and removes the previously #1 risk. Jersey-color sections in the docs below are kept as the reference for that *later* phase. See `03_DEMO_BUILD_PLAN.md` Step 3.
 
 It also documents **how the dual-angle fusion logic works** and **where every reusable piece of code lives** across the Uball repos, so the demo can be built by stitching proven components rather than from scratch.
 
@@ -13,7 +15,7 @@ The implementation will happen in a fresh Claude Code session driven by the numb
 ## Read order
 
 1. **[`01_FUSION_LOGIC.md`](01_FUSION_LOGIC.md)** — how the dual-angle near+far fusion works, the exact files, the tunable knobs, and the known accuracy issues + planned improvements (V3 roadmap)
-2. **[`02_COURT_MAPPING.md`](02_COURT_MAPPING.md)** — where the court-mapping / player-tracking code is, how homography + jersey-color team assignment work, which repo is most mature
+2. **[`02_COURT_MAPPING.md`](02_COURT_MAPPING.md)** — where the court-mapping / player-tracking code is, how homography works (jersey-color team assignment is documented but deferred), which repo is most mature
 3. **[`03_DEMO_BUILD_PLAN.md`](03_DEMO_BUILD_PLAN.md)** — the step-by-step plan to build the synced video + court-map demo, reusing proven components
 4. **[`04_REFERENCES.md`](04_REFERENCES.md)** — exact file:line index of every reusable piece, per repo, with a "copy verbatim / adapt / build-new" verdict
 
@@ -28,7 +30,7 @@ The Uball CV pipeline has two halves:
 | **Shot detection** (dual-angle fusion) | ✅ V1.5 just validated — far model retrained on production frames, **75% → 100% detection recall** on the c2a354fe game | made/missed shot events with timestamps + confidence |
 | **Player tracking + court mapping** | Multiple working prototypes across 3 repos; **no single productionized demo** yet | per-player image-space tracks; (in the best repo) top-down court coordinates |
 
-The demo combines **both**: it plays the game with shot events annotated *and* shows where every player is on a 2D court, colored by team. That's the "wow" visual for the client — proving the system understands the game spatially, not just shot-by-shot.
+The demo combines **both**: it plays the game with shot events annotated *and* shows where every player is on a 2D court (uniform dots for now; team colors after a later training pass). That's the "wow" visual for the client — proving the system understands the game spatially, not just shot-by-shot.
 
 ---
 
@@ -53,7 +55,7 @@ So the shot-event layer the demo overlays is now trustworthy. The remaining buil
 | Criterion | Target |
 |---|---|
 | Video + court map render **in sync** (same timeline) | frame-accurate within ~1 frame |
-| Players shown as dots, **colored by jersey/team** | 2 distinct colors, correct ≥90% of frames |
+| Players shown as dots, **one uniform color** (team split deferred) | every player same color, tracked individually by ID |
 | Court map is a clean top-down 2D diagram | recognizable as a basketball court |
 | Shot events (made/missed) overlaid at correct timestamps | from the fused `detection_results.json` |
 | Runs on a processed (not live) game and produces an output mp4 | one self-contained deliverable file |
