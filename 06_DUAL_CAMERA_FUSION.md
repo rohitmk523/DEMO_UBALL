@@ -44,7 +44,7 @@ The Step-1 tooling (`demo/calibrate_homography.py`, vendored `calibration_integr
 
 ## 4. Fisheye: the one real new problem
 
-A plane homography assumes a pinhole camera. **NL/NR barrel-distort** (court boundary lines visibly bow; vignette corners — GoPro-class wide FOV). FL looks near-rectilinear. Options, in order of preference:
+A plane homography assumes a pinhole camera. **All four cameras barrel-distort** — confirmed on the clean t=1800 frames: FL's sidelines/3-pt arc bow and it vignettes too (correcting an earlier "FL near-rectilinear" claim); NL is the most extreme (GoPro-class wide FOV). Options, in order of preference:
 
 1. **One-time fisheye intrinsic calibration of NL** (`cv2.fisheye.calibrate` on a checkerboard or court-line fit) → undistort every NL frame before homography. Most correct; one-time cost; reusable forever (static lens).
 2. Fit H_NL on **central-region** points only and accept growing edge error — acceptable for a uniform-dot demo, cheap, no checkerboard needed.

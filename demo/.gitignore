@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 # never commit multi-GB source video; frames/calibration artifacts are OK
 *.mp4
+
+# generated validation check images (not source)
+validation/
