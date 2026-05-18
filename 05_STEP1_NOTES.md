@@ -36,7 +36,11 @@ A 4-point homography from that small cluster is mathematically exact at those 4 
 
 A good full-court H needs 6+ well-spread **coplanar floor** landmarks. The candidates (center-logo ellipse extremes, sideline points, 3-pt arc, far-baseline corners) are either occluded, stylized, or not safely readable by eyeballing a downscaled remote frame. Picking them needs a human eye on the full-res frame — exactly the interactive clicker, which needs a local GUI (cannot run in this headless agent).
 
-## Recommended next actions (decision needed — see chat)
+## RESOLVED (2026-05-18): dual-camera fusion chosen
+
+The user chose to **fuse a near camera (NL) with FL** rather than work around the single-camera blind spot. Full architecture, calibrate-once model, fusion algorithm, and `trackingStudio` reuse map: **[`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md)**. The single-camera options below are kept for history / fallback.
+
+## (Historical) single-camera next actions
 
 1. **Calibrate on an EMPTY-court frame.** H is camera-fixed, so use a pre-game / timeout / warm-up timestamp where painted lines aren't occluded by players. `python demo/extract_frame.py --angle FL --t <empty_t>` then `--interactive`. Biggest cheap win.
 2. **Operator runs the interactive clicker** on that clean frame, picking the painted key + center-logo ellipse + both visible sideline/3-pt-arc points for spread. (Tool is ready.)

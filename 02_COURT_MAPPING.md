@@ -13,9 +13,11 @@ The demo needs players rendered as **dots on a top-down 2D court**, synced to th
 | **`uball_court_mapping/`** | Mature FastAPI system: YOLOv11 + ByteTrack + SAM2 → court projection → stitched dual-panel video | ✅ **yes** (`video_stitcher.py`) | ❌ no (colors by UWB tag_id) | manual point-click + DXF court geometry | **Best rendering scaffold** |
 | **`BasketTracking-1/`** | Panorama-stitch + court rectification + player detection with HSV team colors → 2D minimap | ✅ yes (implied in main loop) | ✅ **yes** (HSV jersey classifier) | auto court-corner detection + `getPerspectiveTransform` | **Best jersey-color + homography source** |
 | **`Uball_tracking/`** | Clean tracking-only package (YOLO+SAM2+ByteTrack), no court projection | ❌ no | ❌ no | ❌ none | tracking only — skip for court map |
-| `trackingStudio/` | Dual-camera FastAPI, DeepSORT, BEV view, cross-camera merge | ✅ yes (BEV) | ❌ no | 4-corner per camera | alternative; weaker cross-cam re-ID |
+| `trackingStudio/` | Dual-camera FastAPI, DeepSORT, BEV view, cross-camera merge | ✅ yes (BEV) | ❌ no | 4-corner per camera | **PROMOTED → dual-camera merge scaffold** (see [`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md)): `CrossCameraMerger` is COPY-able, framework-agnostic |
 
-**Strategy (current demo, uniform dots):** `uball_court_mapping`'s side-by-side stitching scaffold + `BasketTracking-1`'s **homography only** (auto court-corner detect). The jersey-color classifier from `BasketTracking-1` is **not used now** — it's the reuse target for the *later* team-color phase. So the current build leans almost entirely on `uball_court_mapping` plus one homography helper.
+> **Update (2026-05-18): the demo is now DUAL-camera (FL + NL).** Step 1 proved one FL camera can't cover the full court (far baseline occluded). Full design in [`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md). `trackingStudio` moves from "alternative" to an active reuse source for the cross-camera merge.
+
+**Strategy (current demo, uniform dots, dual-camera):** per-camera homography (vendored `calibration_integration.py`, Step 1) projecting FL **and** NL into one shared court space → `trackingStudio` `CrossCameraMerger` (COPY) to fuse → `uball_court_mapping`'s `video_stitcher` side-by-side render. `BasketTracking-1` auto-corner was **rejected** (cv2.xfeatures2d broken on cv2 4.12 — see [`05_STEP1_NOTES.md`](05_STEP1_NOTES.md)); its jersey classifier remains the deferred team-color reuse target.
 
 ---
 

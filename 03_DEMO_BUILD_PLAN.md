@@ -4,6 +4,8 @@ Goal: one self-contained output mp4 — left panel = processed game video with s
 
 > **Scope decision (2026-05-17):** team-color split is **deferred**. For this demo every player is the *same* color dot — this is enough to show players moving on the court side-by-side with the real video. Jersey-color → team classification comes later, after a dedicated color-training pass. This removes the previously #1 demo risk from the critical path.
 
+> **Architecture update (2026-05-18): DUAL-camera (FL + NL).** Step 1 proved one camera can't cover the full court ([`05_STEP1_NOTES.md`](05_STEP1_NOTES.md)). Steps 1–2 below are being revised to the two-camera, shared-court-space model — full design + reuse map in **[`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md)** (calibrate-once-per-camera; reuse `trackingStudio` `CrossCameraMerger`). Effort ≈ +1.5–2 d → ~4–5 d total. The detailed Step 1/2 rewrite lands after design sign-off.
+
 This is executable by a fresh Claude Code session. Each step says what to reuse vs. build.
 
 ---
