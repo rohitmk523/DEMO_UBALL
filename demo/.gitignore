@@ -5,3 +5,13 @@ __pycache__/
 
 # generated validation check images (not source)
 validation/
+
+# secrets — never commit
+.env
+*.env
+.env.*
+
+# scratch / scratch previews
+_*.jpg
+_render.log
+frames/_*.jpg

@@ -65,7 +65,11 @@ class ClickCalib:
 
         self.L = court.COURT_LENGTH_CM
         self.W = court.COURT_WIDTH_CM
-        self.cz = 0.10                                  # center-zone inset
+        # 0.0 = use ALL clicked pairs (matches solve_fisheye RANSAC, what
+        # actually ships). Spread-out edge points make the homography GOOD;
+        # the old 0.10 default silently dropped them -> degenerate fits.
+        # Press '+' only if you deliberately want to exclude edge pairs.
+        self.cz = 0.0                                   # center-zone inset
         self.pairs: List[Tuple[Tuple[float, float],
                                Tuple[float, float]]] = []  # (img_px, cm)
         self.pending: Optional[Tuple[float, float]] = None  # img_px
