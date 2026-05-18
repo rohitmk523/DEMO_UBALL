@@ -162,3 +162,24 @@ The headline in `README.md` ("100% detection recall, 87.3% classification") is *
 ## 10. One-line takeaway (authoritative)
 
 > Against full human GT (189 attempts incl. 109 misses), v16 is **92.6% detection, 85.7% made/miss, 79.5% made-precision** — solid but not the "100%/87%" the makes-only logs implied. The remaining error is **bidirectional**: 8 clean makes lost to tight swish geometry **and** 17 misses (mostly rim-bounce-outs) wrongly called made via the far `bounced_back_out` gap and the fusion disagreement resolver. Fixing it means raising precision (far rim-bounce + `resolve_disagreement`) and recall (swish geometry) **together**, validated on the `plays` confusion matrix — not the one-sided loosening §5 proposed.
+
+---
+
+## 11. Empirical test of Fix A + Fix B — REJECTED (negative result)
+
+Fix A (far `simple_line_intersection_test.py` — widen bottom-crossing horizontal gate to zone width) + Fix B (near `shot_detection.py` — short-tail downward fallback `0.5→0.7`, fast-swish gate `0.8→0.5`) were implemented on branch `fix/shot-geometry-AB` (commit `5519e5d`), re-run on c2a354fe (both sides, v16 models, GPU EC2 — identical `dual_angle_fusion.py` code path), and scored against the **same uball.ai `plays` confusion matrix** (§9).
+
+| Metric | BEFORE (v16 unpatched) | AFTER (Fix A+B) | Δ |
+|---|---|---|---|
+| Detection | 92.6% (175/189) | 92.1% (174/189) | −0.5 pp |
+| Made-recall | 89.2% | 89.0% | **−0.1 pp** |
+| Made-precision | 79.5% | **73.0%** | **−6.5 pp** |
+| Classification acc | 85.7% | 81.6% | −4.1 pp |
+| TP / FN | 66 / **8** | 65 / **8** | FN unchanged |
+| FP / TN | 17 / 84 | **24 / 77** | +7 FP |
+
+**Verdict: reject. Do not merge `fix/shot-geometry-AB`.** The loosening (a) **failed its own goal** — the 8 target false-negatives did *not* flip (FN stayed 8; widening a horizontal gate cannot help shots whose bottom trajectory point is simply untracked/occluded — the real root cause is missing points, not gate width), and (b) **regressed precision −6.5 pp** by flipping 7 true-misses to "made" — the exact bidirectional conflict §9 predicted from the code. This empirically validates §9: the §5 "FP-safe loosening" is *not* FP-safe.
+
+*Caveat:* the patched run emitted fewer total CV events (374→292) and the best-fit join offset shifted (−2.0→−1.0 s), so ±1–2 shots of matching noise exists; but the direction (precision down, recall flat, FN not recovered) is unambiguous and robust to that noise.
+
+**Confirmed next direction (supersedes §5):** abandon one-sided loosening. The real lever is **precision-first**: (1) strengthen far `bounced_back_out` (`simple_line_intersection_test.py:331–348`, replace the lone `bounce_upward>30` with oscillation/depth confirmation) to kill the 17→24 rim-bounce FPs; (2) re-tune `resolve_disagreement` (`dual_angle_fusion.py:684–777`) + V3 weights (`:508–513`) — ~9/17 FP flow through it; (3) only then address the 8 FN with a *targeted* trajectory-interpolation fix (recover missing bottom points), not a gate/threshold loosening — co-validated on this `plays` matrix so precision can't regress. Branch `fix/shot-geometry-AB` is kept as a documented negative result.
