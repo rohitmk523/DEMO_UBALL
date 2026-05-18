@@ -18,6 +18,7 @@ The implementation will happen in a fresh Claude Code session driven by the numb
 2. **[`02_COURT_MAPPING.md`](02_COURT_MAPPING.md)** — where the court-mapping / player-tracking code is, how homography works (jersey-color team assignment is documented but deferred), which repo is most mature
 3. **[`03_DEMO_BUILD_PLAN.md`](03_DEMO_BUILD_PLAN.md)** — the step-by-step plan to build the synced video + court-map demo, reusing proven components
 4. **[`04_REFERENCES.md`](04_REFERENCES.md)** — exact file:line index of every reusable piece, per repo, with a "copy verbatim / adapt / build-new" verdict
+5. **[`05_SHOT_ACCURACY_DIAGNOSTIC.md`](05_SHOT_ACCURACY_DIAGNOSTIC.md)** — why the 9 remaining made/miss errors on c2a354fe happen (100% upstream geometry, **not** fusion), the exact code paths, and a false-positive-safe fix proposal with file:line + safe/risky verdicts
 5. **[`05_STEP1_NOTES.md`](05_STEP1_NOTES.md)** — Step 1 execution log: homography tooling built, and the blocking finding (single FL camera can't cover the full court)
 6. **[`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md)** — the resolution: fuse FL + NL in shared court space, calibrate-once-per-camera, reuse `trackingStudio`'s cross-camera merger
 
