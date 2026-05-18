@@ -4,6 +4,8 @@ Game **c2a354fe** (2026-03-19), v16 far model. Detection recall **79/79 = 100%**
 
 > Scope: **diagnostic + fix proposal only. No code was modified.** Visual confirmation clips: see §7.
 
+> ⚠️ **READ §9 FIRST — authoritative ground truth changes the headline.** §1–§8 below were computed against the operator Firebase log, which contains **only makes** (79 `score_added`, 0 misses). The Supabase `plays` table holds the **human-annotated full GT (80 makes + 109 misses = 189 attempts)**. Against that authoritative GT the real numbers are **detection 92.6%, made/miss 85.7%, made-precision 79.5%, made-recall 89.2%** — *not* 100%/87%. The "100% recall" in `README.md` is a makes-only artifact. §9 has the corrected confusion matrix and what it does to the fix.
+
 ---
 
 ## 1. Method & the 9 shots
@@ -114,6 +116,49 @@ For each of the 9 shots: a side-by-side **near | far** clip (±6 s) using each d
 
 ---
 
-## 8. One-line takeaway
+## 8. One-line takeaway (makes-only view — superseded by §9)
 
-> v16 made shot **detection** essentially perfect (79/79). The remaining 9 made/miss errors are **100% upstream geometry**, not fusion: far's bottom-crossing test is too tight for fast/long swishes (`simple_line_intersection_test.py:157`), and near's swish gate is unreachable when the post-hoop tail is short (`shot_detection.py:526/:764`). Two narrow, FP-safe relaxations that re-enter the existing in-and-out guards recover all 9 without touching fusion.
+> v16 made shot **detection** essentially perfect (79/79). The remaining 9 made/miss errors are **100% upstream geometry**, not fusion… *(this conclusion holds only for the makes-only false-negative view; §9 below adds the false-positive half and revises it).*
+
+---
+
+## 9. Authoritative ground truth (Supabase `plays`) — corrected numbers
+
+Source: `plays` table (project default Supabase MCP), `game_id = c2a354fe-eb34-4980-af00-8f5ff6b00143`, `source='manual'` (human annotator). **189 shot attempts: 80 makes + 109 misses** (FG 46/28, 3PT 4/40, 4PT 18/33, FT 12/8). `timestamp_seconds` shares the video axis; joined to the v16 fused S3 output (side A+B), best offset −2.0 s, ±3 s window.
+
+### Corrected confusion matrix (175 matched of 189)
+
+| | CV = made | CV = missed |
+|---|---|---|
+| **GT = MAKE (74 det.)** | TP **66** | FN **8** |
+| **GT = MISS (101 det.)** | FP **17** | TN **84** |
+
+- **Detection 175/189 = 92.6%** (makes 92.5%, misses 92.7%; 4-pt only 86%). **Not 100%** — the 100% was makes-only against the sparse operator log. 14 attempts undetected entirely (6 makes, 8 misses).
+- **Made-precision = 66/(66+17) = 79.5%** — *≈1 in 5 shots the system calls "made" was actually a miss.* This was the previously-unmeasurable blind spot. **Now measured.**
+- **Made-recall = 66/(66+8) = 89.2%.** Classification accuracy (matched) = **85.7%**.
+- **Over-detection:** CV emits **374 events for 189 GT attempts**; ~190 CV events have no GT shot within ±3 s (72 of them labelled "made"). Some of that is near/far double-emission not deduped 1:1 and possible GT-annotation incompleteness, so treat the worst-case "precision incl. ghosts ≈ 43%" as a flag, **not** a quoted figure — but raw over-firing on passes/rebounds is real and needs a dedup + GT-completeness pass before any client number is quoted.
+
+### What this does to the fix (important revision of §2/§5)
+
+The 17 false positives change the conclusion:
+
+1. **The error is bidirectional**, not just "9 makes lost". 8 makes→miss (the fast/long swishes of §3–§4) **and** 17 misses→made.
+2. **The FP signatures implicate the far rim-bounce path and the fusion disagreement resolver.** Of the 17 FP: ~9 are `v2_feature_resolution` (the `resolve_disagreement` path, `dual_angle_fusion.py:684–777`) and 2 `single_far` — i.e. **far calls a rim-bounce-out "made"** (`far_top=1–3 / bot=1`, so a bottom crossing *did* register yet `bounced_back_out` failed to fire). So §2's "fusion is not the problem" is **true only for the FN/makes view**; for precision, the disagreement resolver and the far `bounced_back_out` guard (`simple_line_intersection_test.py:331–348`, `bounce_upward>30`) **are** the problem.
+3. **The §5 FP-safe loosening is no longer safe by code-reasoning alone.** It argued the relaxations re-enter `bounced_back_out`/`is_rim_bounce` — but the data shows those guards are *already failing 17×*. Loosening the "made" criteria to recover the 8 FN would, on this evidence, **increase** the 17 FP. The two objectives now genuinely conflict.
+
+### Revised direction
+
+- **Priority 1 (precision): strengthen `bounced_back_out`** — `simple_line_intersection_test.py:331–348` raise/replace the single `bounce_upward>30` test with oscillation/depth confirmation; the 17 FP are mostly `top≥1/bot=1` rim-bounce-outs slipping through.
+- **Priority 2 (the disagreement path): re-examine `resolve_disagreement`** (`:684–777`) and the V3 feature weights (`:508–513`) — ~9/17 FP flow through it calling miss→made. This **reinstates fusion as a tuning surface for precision** (the old V3 roadmap was about disagreement after all — it just predates the v16 far model that fixed *detection*).
+- **Priority 3 (recall): the §3–§4 swish geometry** — keep, but only co-tuned against the FP set so recovering the 8 FN doesn't regress the 17 FP.
+- **Validation must be the full `plays` GT confusion matrix** (this §9 join), re-run after each change; success = precision ↑ *and* recall ↑ on 2+ games. The §6 hand-labelling step is now unnecessary — `plays` already has 109 annotated misses.
+
+### Client-credibility note
+
+The headline in `README.md` ("100% detection recall, 87.3% classification") is **measured against makes-only operator logs**. Against authoritative human GT the same run is **92.6% detection / 85.7% made-miss / 79.5% made-precision**. The client number must be the latter (or detection-only, clearly scoped). Recommend correcting the `README.md` headline table accordingly.
+
+---
+
+## 10. One-line takeaway (authoritative)
+
+> Against full human GT (189 attempts incl. 109 misses), v16 is **92.6% detection, 85.7% made/miss, 79.5% made-precision** — solid but not the "100%/87%" the makes-only logs implied. The remaining error is **bidirectional**: 8 clean makes lost to tight swish geometry **and** 17 misses (mostly rim-bounce-outs) wrongly called made via the far `bounced_back_out` gap and the fusion disagreement resolver. Fixing it means raising precision (far rim-bounce + `resolve_disagreement`) and recall (swish geometry) **together**, validated on the `plays` confusion matrix — not the one-sided loosening §5 proposed.
