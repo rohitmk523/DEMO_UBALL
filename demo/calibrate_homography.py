@@ -51,18 +51,23 @@ def _court_polylines() -> List[List[Tuple[float, float]]]:
         [(0, 0), (L, 0), (L, W), (0, W), (0, 0)],          # boundary
         [(cx, 0), (cx, W)],                                  # center line
     ]
-    # center circle + ft circles as sampled arcs
+    # center circle + ft circles (true DXF radii) as sampled arcs
     for (ccx, ccy, r) in [(cx, cy, court.CENTER_CIRCLE_R_CM),
-                          (court.FT_DISTANCE_CM, cy, lh),
-                          (L - court.FT_DISTANCE_CM, cy, lh)]:
+                          (court.FT_DISTANCE_CM, cy, court.FT_CIRCLE_R_CM),
+                          (L - court.FT_DISTANCE_CM, cy, court.FT_CIRCLE_R_CM)]:
         arc = [(ccx + r * np.cos(t), ccy + r * np.sin(t))
                for t in np.linspace(0, 2 * np.pi, 48)]
         lines.append(arc)
-    # keys
+    # keys + 3pt arcs (arc center = hoop, per DXF)
     for bx, s in ((0.0, 1.0), (L, -1.0)):
         fx = bx + s * court.FT_DISTANCE_CM
         lines.append([(bx, cy - lh), (fx, cy - lh),
                       (fx, cy + lh), (bx, cy + lh)])
+        hx = bx + s * court.HOOP_FROM_BASELINE_CM
+        a0, a1 = (np.pi / 2, 3 * np.pi / 2) if s > 0 else (-np.pi / 2, np.pi / 2)
+        lines.append([(hx + court.THREE_R_CM * np.cos(t),
+                       cy + court.THREE_R_CM * np.sin(t))
+                      for t in np.linspace(a0, a1, 40)])
     return lines
 
 
