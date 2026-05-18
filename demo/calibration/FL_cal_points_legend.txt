@@ -1,0 +1,37 @@
+FL_cal — numbered calibration points (X=length 0..2865cm, Y=width 0..1524cm)
+
+  1 : (    0.0,    0.0) cm  L baseline @ scoreboard corner
+  2 : (    0.0,  381.0) cm  L baseline, scoreboard quarter
+  3 : (    0.0,  518.0) cm  L baseline @ lane edge (top)
+  4 : (    0.0,  762.0) cm  L baseline midpoint (under NL hoop)
+  5 : (    0.0, 1006.0) cm  L baseline @ lane edge (bot)
+  6 : (    0.0, 1143.0) cm  L baseline, Iverson quarter
+  7 : (    0.0, 1524.0) cm  L baseline @ Iverson corner
+  8 : (  579.0,  518.0) cm  L FT line @ lane (top)
+  9 : (  579.0,  762.0) cm  L FT-line center
+ 10 : (  579.0, 1006.0) cm  L FT line @ lane (bot)
+ 11 : (  823.0,  762.0) cm  L FT-circle far apex
+ 12 : (  883.9,  762.0) cm  L top-of-key (3pt apex)
+ 13 : (  716.0,    0.0) cm  scoreboard sideline, L quarter
+ 14 : (  716.0, 1524.0) cm  Iverson sideline, L quarter
+ 15 : ( 2148.0,    0.0) cm  scoreboard sideline, R quarter
+ 16 : ( 2148.0, 1524.0) cm  Iverson sideline, R quarter
+ 17 : ( 1432.5,    0.0) cm  center line @ scoreboard sideline
+ 18 : ( 1432.5,  579.0) cm  center circle TOP
+ 19 : ( 1432.5,  762.0) cm  center court
+ 20 : ( 1432.5,  945.0) cm  center circle BOT
+ 21 : ( 1432.5, 1524.0) cm  center line @ Iverson sideline
+ 22 : ( 1249.5,  762.0) cm  center circle LEFT apex
+ 23 : ( 1615.5,  762.0) cm  center circle RIGHT apex
+ 24 : ( 1981.1,  762.0) cm  R top-of-key (3pt apex)
+ 25 : ( 2042.0,  762.0) cm  R FT-circle far apex
+ 26 : ( 2286.0,  518.0) cm  R FT line @ lane (top)
+ 27 : ( 2286.0,  762.0) cm  R FT-line center
+ 28 : ( 2286.0, 1006.0) cm  R FT line @ lane (bot)
+ 29 : ( 2865.0,    0.0) cm  R baseline @ scoreboard corner
+ 30 : ( 2865.0,  381.0) cm  R baseline, scoreboard quarter
+ 31 : ( 2865.0,  518.0) cm  R baseline @ lane edge (top)
+ 32 : ( 2865.0,  762.0) cm  R baseline midpoint (under far hoop)
+ 33 : ( 2865.0, 1006.0) cm  R baseline @ lane edge (bot)
+ 34 : ( 2865.0, 1143.0) cm  R baseline, Iverson quarter
+ 35 : ( 2865.0, 1524.0) cm  R baseline @ Iverson corner

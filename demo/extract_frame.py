@@ -35,15 +35,26 @@ def presign(s3_uri: str, expires: int = 3600) -> str:
     return out.stdout.strip()
 
 
-def extract(angle: str, t_seconds: float, out_path: Path) -> Path:
+def extract(angle: str, t_seconds: float, out_path: Path,
+            deinterlace: bool = True) -> Path:
+    """Pull one frame.
+
+    deinterlace=True (default): the source is interlaced but the stream is
+    flagged progressive, so ffmpeg auto-deinterlace (yadif/bwdif) does NOT
+    engage and frames show heavy comb/ghost blur (illegible court lines).
+    Forcing a single field then rescaling to full 1080 removes the comb and
+    yields crisp, clickable lines. The WHOLE pipeline (calibration AND
+    detection) must use the same setting so pixel spaces match.
+    """
     if angle not in VALID_ANGLES:
         raise SystemExit(f"angle must be one of {VALID_ANGLES}, got {angle!r}")
     url = presign(f"{S3_BASE}_{angle}.mp4")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    vf = ["-vf", "field=top,scale=1920:1080"] if deinterlace else []
     # input-seek (-ss before -i) = fast, uses HTTP range; one frame, high quality
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error",
-         "-ss", str(t_seconds), "-i", url,
+         "-ss", str(t_seconds), "-i", url, *vf,
          "-frames:v", "1", "-q:v", "2", str(out_path)],
         check=True,
     )
@@ -59,9 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--t", type=float, default=1400.0,
                    help="timestamp in seconds (game is ~3597s)")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument("--no-deinterlace", action="store_true",
+                   help="disable the interlace fix (debug only)")
     a = p.parse_args(argv)
     out = a.out or Path(f"demo/frames/{GAME}_{a.angle}_t{int(a.t)}.jpg")
-    extract(a.angle, a.t, out)
+    extract(a.angle, a.t, out, deinterlace=not a.no_deinterlace)
     return 0
 
 
