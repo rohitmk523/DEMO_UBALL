@@ -52,12 +52,12 @@ def main() -> int:
     ap.add_argument("--name", default="FR_cal")
     ap.add_argument("--t0", type=float, default=2400)
     ap.add_argument("--dur", type=float, default=300)
-    ap.add_argument("--fps", type=int, default=15)
+    ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--out", default="demo/courtmap_demo.mp4")
-    ap.add_argument("--weights", default=str(
-        Path.home() / "Cellstrat/GitHub_Repositories/uball_court_mapping/yolo11m.pt"))
-    ap.add_argument("--conf", type=float, default=0.35)
-    ap.add_argument("--roi-top", type=float, default=0.34,
+    ap.add_argument("--weights", default="yolo11l.pt",
+                    help="YOLO11 large: more reliable than n/m for the demo")
+    ap.add_argument("--conf", type=float, default=0.40)
+    ap.add_argument("--roi-top", type=float, default=0.22,
                     help="ignore detections whose feet are above this "
                          "fraction of frame height (bench/far wall + the "
                          "camera's least-accurate far zone)")
