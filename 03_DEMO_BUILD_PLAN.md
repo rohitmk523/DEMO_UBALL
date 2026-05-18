@@ -33,19 +33,27 @@ This is executable by a fresh Claude Code session. Each step says what to reuse 
 
 ---
 
-## Step 2 — Detect + track players, project to court
+## Step 2 — Detect + track players (per camera) + fuse to court
 
-**Reuse:** `uball_court_mapping/app/services/player_detector.py` (YOLOv11 person) + `bytetrack_tracker.py` (ByteTrack). SAM2 mask refinement is optional — skip for demo speed unless dots jitter.
+> **Dual-camera (2026-05-18).** Run detection+tracking **independently per camera** (FL and NL), then fuse in shared court space. The fusion layer is **built + tested**: `demo/lib/dual_camera_fusion.py` (`demo/tests/test_dual_fusion.py`, 5 green).
 
-For each frame:
-1. YOLOv11 → person bboxes
-2. ByteTrack → stable track IDs
-3. For each track: take the **foot point** = bbox bottom-center `(x1+x2)/2, y2`
-4. Project foot point through `H` → court coordinates `(cx, cy)`
+**Reuse:** `uball_court_mapping/app/services/player_detector.py` (YOLOv11 person) + `bytetrack_tracker.py` (ByteTrack), **one tracker instance per camera**. SAM2 optional — skip for demo speed.
 
-**Build-new (small):** a thin loop that reads the video frame-by-frame and calls the above, accumulating `{frame_idx: [{track_id, court_xy, bbox}]}`.
+Per synchronized FL/NL frame-pair:
+1. YOLOv11 → person bboxes, **separately for the FL frame and the NL frame**
+2. ByteTrack per camera → per-camera stable track IDs
+3. Hand each camera's `[(track_id, bbox, conf)]` to `DualCameraFusion.fuse(fl_dets, nl_dets)`:
+   - it takes the **foot point** = bbox bottom-center `(x1+x2)/2, y2`
+   - projects through that camera's cached homography → shared court CM
+   - greedy mutual nearest-neighbour FL↔NL within `max_player_distance_cm` (overlap dedup); unmatched pass through
+   - returns `FusedPlayer(court_xy, cameras, track_ids)`
+4. NL fisheye: optional pluggable `nl_undistort` (06 §9 default = central-fit, no-op now)
 
-**Output:** `demo/tracks/<game>_tracks.json` (per-frame player court positions + track IDs).
+**Why our own fusion, not trackingStudio's merger:** the vendored `CrossCameraMerger` can't unify two cameras in the same frame (structural — see [`06_DUAL_CAMERA_FUSION.md`](06_DUAL_CAMERA_FUSION.md) §6 + the regression test). Kept as REF only.
+
+**Build-new (small, remaining):** the frame-pair read loop (sync FL/NL by frame index/FPS — both are 1080p29.97) calling `fuse()`, accumulating `{frame_idx: [FusedPlayer...]}`.
+
+**Output:** `demo/tracks/<game>_tracks.json` (per-frame fused court positions + per-camera track IDs).
 
 ---
 

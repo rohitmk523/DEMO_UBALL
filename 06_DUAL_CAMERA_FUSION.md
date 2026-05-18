@@ -66,7 +66,8 @@ Recommendation: **start with (2)** for the demo timeline, design the code so und
 
 | Component | Verdict | Source | Notes |
 |---|---|---|---|
-| `CrossCameraMerger` class | **COPY** | `trackstudio/processors/cross_camera_merger.py:60–495` | Greedy bipartite match: court-space inverse-distance + appearance cosine. Framework-agnostic, stateless. Tune `max_player_distance_bev`, `appearance_similarity_threshold` for FL/NL spacing. |
+| `CrossCameraMerger` class | **REF only** (was COPY) | `trackstudio/processors/cross_camera_merger.py:60–495` | Vendored at `demo/lib/cross_camera_merger.py` for provenance, **not on the demo path**. Implementation finding (encoded in `demo/tests/test_dual_fusion.py`): it only matches a detection against **prior-frame** global players; `_associate_players_across_cameras` merely *logs* candidate pairs, never links them. So two cameras seeing a player in the **same** frame each spawn a separate global and never reconcile. The `SpatialCrossCameraMerger` threshold fix (`demo/lib/spatial_merger.py`) does **not** cure this — it is structural. We therefore wrote our own per-frame court-space fusion. |
+| **Per-frame court-space fusion** | **OURS (new, small)** | `demo/lib/dual_camera_fusion.py` | Project foot points → shared court CM (vendored `CalibrationIntegration`), greedy mutual nearest-neighbour FL↔NL within `max_player_distance_cm`, mean position; unmatched pass through. 5 synthetic tests green. No global-ID state machine needed — uniform dots make persistent IDs unnecessary. |
 | BEV projection math | **ADAPT** | `video_processor.py:1013–1043` (`_transform_point_to_bev`) | We instead reuse our vendored `calibration_integration.court_to_image`/`image_to_court` for consistency with Step 1; take the merge/court-frame structure from here. |
 | Homography setup | **SKIP** (have better) | `video_processor.py:719–742` | Per-session, not persisted. Our Step-1 `calibrate_homography.py` already persists `*_H.npy` — keep ours. |
 | DeepSORT tracker | **REF / optional** | `processors/deepsort_tracker.py` | Gives appearance embeddings (helps cross-cam re-ID). But same-jersey players + uniform dots make appearance weak; **court-space proximity is the robust signal**. Default to `uball_court_mapping` ByteTrack (already chosen in [02](02_COURT_MAPPING.md)); use merger's spatial score, drop/down-weight appearance. |
@@ -104,4 +105,16 @@ Net ≈ **+1.5–2 days** over the ~2.5–3 d single-camera estimate → **~4–
 - Fisheye: **start central-fit (§4 opt 2)**, upgrade later.
 - Seam: **center third overlap**, exact line tuned at integration.
 
-Next action after sign-off: revise [`03_DEMO_BUILD_PLAN.md`](03_DEMO_BUILD_PLAN.md) Steps 1–2 to the two-camera flow and extract `CrossCameraMerger` into `demo/lib/` (same vendoring pattern as the calibration core).
+## 10. Implementation status (2026-05-18)
+
+Built + tested (`demo/lib/`, `demo/tests/test_dual_fusion.py` — 5 green):
+
+- `cross_camera_merger.py` — vendored verbatim (provenance; REF only, see §6)
+- `spatial_merger.py` — `SpatialCrossCameraMerger` subclass (REF; documents the no-appearance threshold issue)
+- `dual_camera_fusion.py` — **the demo path**: own per-frame court-space fusion (foot-point project → greedy court-space merge)
+- `calibrate_dual.py` — binds two per-camera Step-1 calibrations into one reusable manifest (`<game>_dual.json`)
+- candidate calibration frames pulled: `demo/frames/{FL,NL}_cal_t2.jpg`
+
+**Still blocked (unchanged):** real per-camera homographies need the operator interactive clicker on a local GUI (headless agent can't click). Everything above is runnable the moment `H_FL`/`H_NL` exist — the fusion math is already proven on synthetic identity calibrations. The video has no empty pre-game (play starts ~t=0), so calibrate on the least-occluded frame.
+
+Next: revise [`03_DEMO_BUILD_PLAN.md`](03_DEMO_BUILD_PLAN.md) Steps 1–2 to the two-camera flow (done alongside this).
