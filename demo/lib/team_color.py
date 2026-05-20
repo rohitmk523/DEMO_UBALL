@@ -233,8 +233,17 @@ class TeamClassifier:
 
     # ---- display ---------------------------------------------------- #
     def team_bgr(self, label: str) -> Tuple[int, int, int]:
+        """Dot/trail fill colour — matches the real jersey."""
         if label == LABEL_REF:
-            return (150, 150, 150)             # gray
-        if label == LABEL_A:                  # dark team -> deep blue
-            return (235, 90, 20)
-        return (40, 215, 245)                 # light team -> amber/gold
+            return (180, 180, 180)             # light gray (refs/neutral)
+        if label == LABEL_A:                  # dark team -> BLACK jersey
+            return (0, 0, 0)
+        return (255, 255, 255)                # light team -> WHITE jersey
+
+    def team_outline_bgr(self, label: str) -> Tuple[int, int, int]:
+        """Outline ring colour for visibility on the dark court canvas."""
+        if label == LABEL_A:                  # black dot -> white ring
+            return (255, 255, 255)
+        if label == LABEL_B:                  # white dot -> black ring
+            return (0, 0, 0)
+        return (40, 40, 40)                   # ref grey -> dark ring

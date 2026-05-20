@@ -324,7 +324,11 @@ def draw_court(base: np.ndarray, tracks: List[SmoothTrack],
                clf: team_color.TeamClassifier) -> np.ndarray:
     canvas = base.copy()
     for tr in tracks:
-        col = clf.team_bgr(team_of.get(tr.sid, team_color.LABEL_REF))
+        label = team_of.get(tr.sid, team_color.LABEL_REF)
+        # Use the outline colour for the trail: a pure-black fill team
+        # has a white outline, so its trail is a fading white streak
+        # (visible on the dark canvas). White-fill team uses dark trail.
+        col = clf.team_outline_bgr(label)
         tl = tr.trail
         for k in range(1, len(tl)):
             a = k / len(tl)
@@ -334,10 +338,12 @@ def draw_court(base: np.ndarray, tracks: List[SmoothTrack],
                      (int(col[0] * a), int(col[1] * a), int(col[2] * a)),
                      2, cv2.LINE_AA)
     for tr in tracks:
-        col = clf.team_bgr(team_of.get(tr.sid, team_color.LABEL_REF))
+        label = team_of.get(tr.sid, team_color.LABEL_REF)
+        col = clf.team_bgr(label)
+        ring = clf.team_outline_bgr(label)
         px, py = court.cm_to_canvas(tr.pos[0], tr.pos[1], SCALE, PAD)
-        cv2.circle(canvas, (px, py), 10, col, -1, cv2.LINE_AA)
-        cv2.circle(canvas, (px, py), 10, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.circle(canvas, (px, py), 11, col, -1, cv2.LINE_AA)
+        cv2.circle(canvas, (px, py), 11, ring, 2, cv2.LINE_AA)
     return canvas
 
 
@@ -354,9 +360,10 @@ def draw_legend(panel: np.ndarray,
     cv2.rectangle(panel, (x - 6, y - 20),
                   (x + 312, y + 10), (0, 0, 0), -1)
     for name, col in items:
+        # outline contrast based on fill brightness
+        ring = (255, 255, 255) if sum(col) < 380 else (0, 0, 0)
         cv2.circle(panel, (x + 7, y - 5), 7, col, -1, cv2.LINE_AA)
-        cv2.circle(panel, (x + 7, y - 5), 7, (255, 255, 255), 1,
-                   cv2.LINE_AA)
+        cv2.circle(panel, (x + 7, y - 5), 7, ring, 2, cv2.LINE_AA)
         cv2.putText(panel, name, (x + 20, y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 240, 240), 1,
                     cv2.LINE_AA)
