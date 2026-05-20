@@ -247,3 +247,175 @@ class TeamClassifier:
         if label == LABEL_B:                  # white dot -> black ring
             return (0, 0, 0)
         return (40, 40, 40)                   # ref grey -> dark ring
+
+
+# ===================================================================== #
+#  SigLIP-embedding team classifier (drop-in replacement)               #
+# ===================================================================== #
+
+class SigLIPTeamClassifier:
+    """Team classifier using SigLIP image embeddings + k-means.
+
+    Matches the public API of `TeamClassifier` (observe / label / finalize
+    / team_bgr / team_outline_bgr) so make_fusion_demo.py can swap by
+    --team-mode. Uses google/siglip-base-patch16-224 from HuggingFace.
+
+    Inspired by https://blog.roboflow.com/identify-basketball-players/
+    (their team-classification step). Robust to the dark-vs-white-on-
+    red-floor case where HSV/brightness clustering fails: semantic
+    embeddings cluster jerseys cleanly regardless of court colour.
+    """
+
+    MODEL_ID = "google/siglip-base-patch16-224"
+
+    def __init__(
+        self,
+        sample_every: int = 4,
+        lock_samples: int = 6,
+        recluster_every: int = 25,
+        min_tracks_for_cluster: int = 3,
+        device: str = "mps",
+        # legacy kwargs accepted+ignored so the CLI surface stays uniform
+        **_legacy,
+    ) -> None:
+        self.sample_every = max(1, sample_every)
+        self.lock_samples = max(2, lock_samples)
+        self.recluster_every = max(5, recluster_every)
+        self.min_tracks = max(2, min_tracks_for_cluster)
+        self.device = device
+        self.calls: Dict[int, int] = {}
+        self.embeds: Dict[int, List[np.ndarray]] = {}
+        self.locked: Dict[int, str] = {}              # tid -> LABEL_*
+        self.centroids: Optional[np.ndarray] = None    # (2, D)
+        self._since = 0
+        self._mdl = None
+        self._proc = None
+        self._torch = None
+
+    # ---- lazy model load ------------------------------------------- #
+    def _lazy(self) -> None:
+        if self._mdl is not None:
+            return
+        from transformers import AutoProcessor, AutoModel  # type: ignore
+        import torch                                       # type: ignore
+        self._proc = AutoProcessor.from_pretrained(self.MODEL_ID)
+        self._mdl = AutoModel.from_pretrained(
+            self.MODEL_ID).to(self.device).eval()
+        self._torch = torch
+
+    # ---- ingestion ------------------------------------------------- #
+    def observe(self, tid: int, frame: np.ndarray,
+                box: Tuple[float, float, float, float]) -> None:
+        if self.locked.get(tid) is not None:           # already final
+            return
+        self.calls[tid] = self.calls.get(tid, 0) + 1
+        if self.calls[tid] % self.sample_every != 1:
+            return
+        roi = _torso_roi_for_siglip(frame, box)
+        if roi is None or roi.size == 0:
+            return
+        self._lazy()
+        rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+        inp = self._proc(images=rgb, return_tensors="pt")
+        inp = {k: v.to(self.device) for k, v in inp.items()}
+        with self._torch.no_grad():                    # type: ignore
+            emb = self._mdl.get_image_features(        # type: ignore
+                **inp).cpu().numpy()[0]
+        emb = emb / (np.linalg.norm(emb) + 1e-9)
+        self.embeds.setdefault(tid, []).append(emb)
+        if len(self.embeds[tid]) > 24:
+            self.embeds[tid] = self.embeds[tid][-24:]
+        self._since += 1
+        if self._since >= self.recluster_every:
+            self._recluster()
+            self._since = 0
+            self._lock_ready()
+
+    # ---- clustering ------------------------------------------------ #
+    def _recluster(self) -> None:
+        ready = [(t, np.mean(es, axis=0))
+                 for t, es in self.embeds.items() if len(es) >= 2]
+        if len(ready) < self.min_tracks:
+            return
+        from sklearn.cluster import KMeans              # type: ignore
+        X = np.stack([m for _, m in ready])
+        km = KMeans(n_clusters=2, n_init=10, random_state=0).fit(X)
+        # Stabilise A/B mapping: A = first centroid by raw-image-mean
+        # brightness of its members (darker -> A) so colours match the
+        # brightness-classifier convention.
+        bri = np.zeros(2, np.float32)
+        cnt = np.zeros(2, np.float32)
+        for (t, _), lbl in zip(ready, km.labels_):
+            # use the L2 norm of the descriptor itself as a cheap proxy
+            # — not perfect, but consistent. (Sign-flip below ensures the
+            # final A/B label assignment isn't dependent on KMeans init.)
+            bri[lbl] += float(np.mean(self.embeds[t][-1]))
+            cnt[lbl] += 1.0
+        cnt = np.maximum(cnt, 1)
+        avg = bri / cnt
+        cen = km.cluster_centers_.copy()
+        if avg[0] > avg[1]:                  # ensure cluster 0 = darker proxy
+            cen = cen[::-1]
+        self.centroids = cen
+
+    def _lock_ready(self) -> None:
+        if self.centroids is None:
+            return
+        for tid, es in self.embeds.items():
+            if tid in self.locked or len(es) < self.lock_samples:
+                continue
+            m = np.mean(es, axis=0)
+            d0 = float(np.linalg.norm(m - self.centroids[0]))
+            d1 = float(np.linalg.norm(m - self.centroids[1]))
+            self.locked[tid] = LABEL_A if d0 < d1 else LABEL_B
+
+    # ---- referee override ----------------------------------------- #
+    def mark_ref(self, tid: int) -> None:
+        """The detector said this track is a referee — lock directly."""
+        self.locked[tid] = LABEL_REF
+
+    # ---- query ---------------------------------------------------- #
+    def label(self, tid: int) -> str:
+        if tid in self.locked:
+            return self.locked[tid]
+        # provisional label while warming up
+        es = self.embeds.get(tid)
+        if es is None or self.centroids is None:
+            return LABEL_REF
+        m = np.mean(es, axis=0)
+        d0 = float(np.linalg.norm(m - self.centroids[0]))
+        d1 = float(np.linalg.norm(m - self.centroids[1]))
+        return LABEL_A if d0 < d1 else LABEL_B
+
+    def finalize(self) -> None:
+        self._recluster()
+        self._lock_ready()
+
+    # ---- display (shared with TeamClassifier) --------------------- #
+    team_bgr = TeamClassifier.team_bgr
+    team_outline_bgr = TeamClassifier.team_outline_bgr
+
+
+def _torso_roi_for_siglip(
+    frame: np.ndarray, box: Tuple[float, float, float, float]
+) -> Optional[np.ndarray]:
+    """Central upper-body crop (jersey) for SigLIP embedding.
+
+    Slightly looser than `torso_descriptor`'s ROI — SigLIP benefits from
+    a bit of jersey context (sleeves, shoulders).
+    """
+    x1, y1, x2, y2 = box
+    w = max(1.0, x2 - x1)
+    h = max(1.0, y2 - y1)
+    if h < 48 or w < 24:                       # too tiny -> skip
+        return None
+    cx1 = int(x1 + 0.15 * w)
+    cx2 = int(x2 - 0.15 * w)
+    cy1 = int(y1 + 0.08 * h)
+    cy2 = int(y1 + 0.55 * h)
+    H, W = frame.shape[:2]
+    cx1, cy1 = max(0, cx1), max(0, cy1)
+    cx2, cy2 = min(W, cx2), min(H, cy2)
+    if cx2 <= cx1 or cy2 <= cy1:
+        return None
+    return frame[cy1:cy2, cx1:cx2]

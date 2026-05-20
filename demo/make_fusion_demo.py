@@ -109,6 +109,7 @@ class Det:
     angle: str
     tid: int                       # this camera's bytetrack id
     box: Tuple[float, float, float, float]
+    cls: int = -1                  # detector class id (for ref pass-through)
 
 
 @dataclass
@@ -268,7 +269,8 @@ def cam_weight(cam: CamCfg, cx: float, falloff: float) -> float:
     return cam.base_w / (1.0 + d / max(1.0, falloff))
 
 
-def court_points(boxes: np.ndarray, ids: np.ndarray, cam: CamCfg,
+def court_points(boxes: np.ndarray, ids: np.ndarray,
+                 clss: Optional[np.ndarray], cam: CamCfg,
                  min_box_h: float, L: float, W: float, margin: float,
                  roi_y: float, x_inset: float, falloff: float) -> List[Det]:
     out: List[Det] = []
@@ -289,10 +291,11 @@ def court_points(boxes: np.ndarray, ids: np.ndarray, cam: CamCfg,
         if not (cam.band_lo <= cx <= cam.band_hi):
             continue
         tid = int(ids[k]) if ids is not None and k < len(ids) else -1
+        cls = int(clss[k]) if clss is not None and k < len(clss) else -1
         out.append(Det(
             x=float(cx), y=float(cy),
             w=cam_weight(cam, float(cx), falloff),
-            angle=cam.angle, tid=tid,
+            angle=cam.angle, tid=tid, cls=cls,
             box=(float(x1), float(y1), float(x2), float(y2))))
     return out
 
@@ -442,6 +445,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--ref-min-sat", type=int, default=50)
     ap.add_argument("--ref-hue-margin", type=float, default=22.0)
     ap.add_argument("--team-lock-samples", type=int, default=10)
+    ap.add_argument("--team-mode", choices=("brightness", "siglip"),
+                    default="brightness",
+                    help="siglip = SigLIP image embeddings + k-means (robust "
+                         "on dark-vs-white kit on a red floor; slower)")
+    ap.add_argument("--detector-classes", default="0",
+                    help="comma-separated detector class ids to keep. "
+                         "yolo11l-COCO: '0' (person). Basketball finetune: "
+                         "'3,4,5,6,7,8' (player variants + referee).")
+    ap.add_argument("--ref-class", type=int, default=-1,
+                    help="detector class id of referee (locked to LABEL_REF "
+                         "without going through team clustering). 8 for the "
+                         "basketball-player-detection-3 finetune; -1 = none.")
     a = ap.parse_args(argv)
 
     L, W = court.COURT_LENGTH_CM, court.COURT_WIDTH_CM
@@ -463,12 +478,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             base_w=bws[ang], offset=offs[i],
         )
 
-    clf = team_color.TeamClassifier(
-        skin_hue_lo=a.skin_hue_lo, skin_hue_hi=a.skin_hue_hi,
-        min_sat=a.color_min_sat, min_val=a.color_min_val,
-        ref_min_sat=a.ref_min_sat, ref_hue_margin=a.ref_hue_margin,
-        lock_samples=a.team_lock_samples,
-    )
+    if a.team_mode == "siglip":
+        clf = team_color.SigLIPTeamClassifier(
+            lock_samples=a.team_lock_samples, device="mps",
+        )
+    else:
+        clf = team_color.TeamClassifier(
+            skin_hue_lo=a.skin_hue_lo, skin_hue_hi=a.skin_hue_hi,
+            min_sat=a.color_min_sat, min_val=a.color_min_val,
+            ref_min_sat=a.ref_min_sat, ref_hue_margin=a.ref_hue_margin,
+            lock_samples=a.team_lock_samples,
+        )
+    keep_classes = [int(c) for c in a.detector_classes.split(",")]
 
     from ultralytics import YOLO
     models = {ang: YOLO(a.weights) for ang in ANGLES}
@@ -507,7 +528,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 ok_any = True
                 frames[ang] = frame
                 res = models[ang].track(
-                    frame, persist=True, classes=[0], conf=a.conf,
+                    frame, persist=True, classes=keep_classes, conf=a.conf,
                     imgsz=a.imgsz, tracker="bytetrack.yaml",
                     device="mps", verbose=False,
                 )[0]
@@ -516,8 +537,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 boxes = res.boxes.xyxy.cpu().numpy()
                 ids = (res.boxes.id.cpu().numpy()
                        if res.boxes.id is not None else None)
+                clss = (res.boxes.cls.cpu().numpy()
+                        if res.boxes.cls is not None else None)
                 roi_y = a.roi_top * frame.shape[0]
-                pooled.extend(court_points(boxes, ids, cams[ang],
+                pooled.extend(court_points(boxes, ids, clss, cams[ang],
                                            a.min_box_h, L, W,
                                            a.court_margin, roi_y,
                                            a.x_inset, a.weight_falloff))
@@ -530,8 +553,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             total += len(shown)
 
             # Accumulate jersey colour per fused track (clip-level
-            # k-means decides the team; here we just feed crops).
+            # k-means decides the team; here we just feed crops). If the
+            # detector explicitly classed the member as referee, lock
+            # the fused track to LABEL_REF without going through teams.
             for tr in shown:
+                if a.ref_class >= 0 and any(
+                        d.cls == a.ref_class for d in tr.members):
+                    if hasattr(clf, "mark_ref"):
+                        clf.mark_ref(tr.sid)
+                    continue
                 for d in tr.members:
                     fr = frames.get(d.angle)
                     if fr is not None:
