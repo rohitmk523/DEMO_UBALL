@@ -450,10 +450,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--ref-min-sat", type=int, default=50)
     ap.add_argument("--ref-hue-margin", type=float, default=22.0)
     ap.add_argument("--team-lock-samples", type=int, default=10)
-    ap.add_argument("--team-mode", choices=("brightness", "siglip"),
+    ap.add_argument("--team-mode", choices=("brightness", "siglip", "coloranchor"),
                     default="brightness",
-                    help="siglip = SigLIP image embeddings + k-means (robust "
-                         "on dark-vs-white kit on a red floor; slower)")
+                    help="siglip = SigLIP embeddings + k-means; coloranchor = "
+                         "chest-crop matched to the game's 2 known colors "
+                         "(--team-colors), robust to shorts contamination")
+    ap.add_argument("--team-colors", default="black,white",
+                    help="the game's two jersey colors for --team-mode "
+                         "coloranchor, e.g. 'black,white' or 'gray,blue'")
     ap.add_argument("--detector-classes", default="0",
                     help="comma-separated detector class ids to keep. "
                          "yolo11l-COCO: '0' (person). Basketball finetune: "
@@ -483,7 +487,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             base_w=bws[ang], offset=offs[i],
         )
 
-    if a.team_mode == "siglip":
+    if a.team_mode == "coloranchor":
+        _ca, _cb = (a.team_colors.split(",") + ["white"])[:2]
+        clf = team_color.ColorAnchorTeamClassifier(
+            color_a=_ca, color_b=_cb, lock_samples=a.team_lock_samples,
+        )
+    elif a.team_mode == "siglip":
         clf = team_color.SigLIPTeamClassifier(
             lock_samples=a.team_lock_samples, device="mps",
         )

@@ -428,3 +428,105 @@ def _torso_roi_for_siglip(
     if cx2 <= cx1 or cy2 <= cy1:
         return None
     return frame[cy1:cy2, cx1:cx2]
+
+
+# ===================================================================== #
+#  Color-anchor team classifier (chest-crop -> nearest of 2 known       #
+#  game colors). Robust to shorts contamination + names the color.      #
+# ===================================================================== #
+
+# Named jersey palette -> reference BGR (OpenCV order). Matches the
+# uball.ai teams.default_color vocabulary.
+PALETTE_BGR = {
+    "black": (25, 25, 25), "white": (240, 240, 240), "gray": (130, 130, 130),
+    "grey": (130, 130, 130), "blue": (200, 70, 30), "navy": (90, 35, 20),
+    "red": (35, 35, 205), "green": (50, 160, 40), "orange": (20, 140, 240),
+    "yellow": (40, 210, 235), "purple": (160, 40, 140), "maroon": (40, 40, 120),
+}
+
+
+def _chest_lab(frame: np.ndarray,
+               box: Tuple[float, float, float, float]) -> Optional[np.ndarray]:
+    """Median Lab color of the CHEST band only (top of torso, excludes
+    shorts/legs), masking out skin + low-saturation floor pixels."""
+    x1, y1, x2, y2 = box
+    w = max(1.0, x2 - x1); h = max(1.0, y2 - y1)
+    if h < 90 or w < 35:           # only near-camera crops resolve the jersey
+        return None
+    cx1 = int(x1 + 0.22 * w); cx2 = int(x2 - 0.22 * w)
+    cy1 = int(y1 + 0.16 * h); cy2 = int(y1 + 0.40 * h)   # chest band only
+    H, W = frame.shape[:2]
+    cx1, cy1 = max(0, cx1), max(0, cy1); cx2, cy2 = min(W, cx2), min(H, cy2)
+    if cx2 <= cx1 or cy2 <= cy1:
+        return None
+    crop = frame[cy1:cy2, cx1:cx2]
+    if crop.size == 0:
+        return None
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    h_, s_, v_ = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    skin = ((h_ >= 3) & (h_ <= 25) & (s_ >= 40) & (v_ >= 60))
+    keep = ~skin
+    if keep.sum() < 12:
+        keep = np.ones_like(skin)
+    lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).reshape(-1, 3)
+    return np.median(lab[keep.reshape(-1)], axis=0)
+
+
+def _bgr_to_lab(bgr: Tuple[int, int, int]) -> np.ndarray:
+    px = np.uint8([[list(bgr)]])
+    return cv2.cvtColor(px, cv2.COLOR_BGR2LAB).reshape(3).astype(np.float64)
+
+
+class ColorAnchorTeamClassifier:
+    """Assign each track to whichever of the game's TWO known colors its
+    chest color is closest to (Lab distance). Names + colors the dot as
+    the real jersey color. API-compatible with TeamClassifier."""
+
+    def __init__(self, color_a: str = "black", color_b: str = "white",
+                 lock_samples: int = 6, **_legacy) -> None:
+        self.color_a = color_a.strip().lower()
+        self.color_b = color_b.strip().lower()
+        self.lock_samples = max(2, lock_samples)
+        self.anchor_a = _bgr_to_lab(PALETTE_BGR.get(self.color_a, (25, 25, 25)))
+        self.anchor_b = _bgr_to_lab(PALETTE_BGR.get(self.color_b, (240, 240, 240)))
+        self.labs: Dict[int, List[np.ndarray]] = {}
+        self.locked: Dict[int, str] = {}
+
+    def observe(self, tid: int, frame: np.ndarray,
+                box: Tuple[float, float, float, float]) -> None:
+        if tid in self.locked:
+            return
+        lab = _chest_lab(frame, box)
+        if lab is None:
+            return
+        self.labs.setdefault(tid, []).append(lab)
+        if len(self.labs[tid]) >= self.lock_samples:
+            m = np.median(np.stack(self.labs[tid]), axis=0)
+            da = np.linalg.norm(m - self.anchor_a)
+            db = np.linalg.norm(m - self.anchor_b)
+            self.locked[tid] = LABEL_A if da <= db else LABEL_B
+
+    def label(self, tid: int) -> str:
+        if tid in self.locked:
+            return self.locked[tid]
+        es = self.labs.get(tid)
+        if not es:
+            return LABEL_REF
+        m = np.median(np.stack(es), axis=0)
+        da = np.linalg.norm(m - self.anchor_a)
+        db = np.linalg.norm(m - self.anchor_b)
+        return LABEL_A if da <= db else LABEL_B
+
+    def finalize(self) -> None:
+        pass
+
+    def team_bgr(self, label: str) -> Tuple[int, int, int]:
+        if label == LABEL_A:
+            return PALETTE_BGR.get(self.color_a, (25, 25, 25))
+        if label == LABEL_B:
+            return PALETTE_BGR.get(self.color_b, (240, 240, 240))
+        return (150, 150, 150)
+
+    def team_outline_bgr(self, label: str) -> Tuple[int, int, int]:
+        col = self.team_bgr(label)
+        return (0, 0, 0) if sum(col) > 380 else (255, 255, 255)
