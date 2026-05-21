@@ -383,8 +383,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--fps", type=int, default=24)
     ap.add_argument("--out", default="demo/fusion_demo_4cam.mp4")
     ap.add_argument("--weights", default="yolo11l.pt")
+    ap.add_argument("--detector", choices=("yolo", "rfdetr"), default="yolo",
+                    help="yolo = ultralytics .track(); rfdetr = RF-DETR "
+                         "(basketball-finetuned) + supervision ByteTrack")
+    ap.add_argument("--rfdetr-weights", default="demo/rfdetr_bball.pth",
+                    help="RF-DETR checkpoint (.pth) when --detector rfdetr")
     ap.add_argument("--conf", type=float, default=0.25,
-                    help="YOLO confidence (lowered for far-side recall)")
+                    help="detector confidence (lowered for far-side recall)")
     ap.add_argument("--imgsz", type=int, default=1280,
                     help="YOLO inference size; 1280 keeps distant/right "
                          "players (640 default downscale misses them)")
@@ -491,8 +496,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     keep_classes = [int(c) for c in a.detector_classes.split(",")]
 
-    from ultralytics import YOLO
-    models = {ang: YOLO(a.weights) for ang in ANGLES}
+    models = None
+    rf_model = None
+    trackers: Dict[str, object] = {}
+    if a.detector == "rfdetr":
+        import supervision as sv
+        try:
+            from rfdetr import RFDETRSmall as _RFD
+        except Exception:
+            from rfdetr import RFDETRBase as _RFD
+        print(f"loading RF-DETR from {a.rfdetr_weights} ...")
+        rf_model = _RFD(pretrain_weights=a.rfdetr_weights)
+        trackers = {ang: sv.ByteTrack(frame_rate=a.fps) for ang in ANGLES}
+    else:
+        from ultralytics import YOLO
+        models = {ang: YOLO(a.weights) for ang in ANGLES}
 
     use_cache = not a.no_cache
     caps: Dict[str, cv2.VideoCapture] = {}
@@ -527,18 +545,30 @@ def main(argv: Optional[List[str]] = None) -> int:
                     continue
                 ok_any = True
                 frames[ang] = frame
-                res = models[ang].track(
-                    frame, persist=True, classes=keep_classes, conf=a.conf,
-                    imgsz=a.imgsz, tracker="bytetrack.yaml",
-                    device="mps", verbose=False,
-                )[0]
-                if res.boxes is None or res.boxes.xyxy is None:
-                    continue
-                boxes = res.boxes.xyxy.cpu().numpy()
-                ids = (res.boxes.id.cpu().numpy()
-                       if res.boxes.id is not None else None)
-                clss = (res.boxes.cls.cpu().numpy()
-                        if res.boxes.cls is not None else None)
+                if a.detector == "rfdetr":
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    dets = rf_model.predict(rgb, threshold=a.conf)
+                    if len(dets) and keep_classes:
+                        dets = dets[np.isin(dets.class_id, keep_classes)]
+                    dets = trackers[ang].update_with_detections(dets)
+                    if len(dets) == 0:
+                        continue
+                    boxes = dets.xyxy
+                    ids = dets.tracker_id
+                    clss = dets.class_id
+                else:
+                    res = models[ang].track(
+                        frame, persist=True, classes=keep_classes, conf=a.conf,
+                        imgsz=a.imgsz, tracker="bytetrack.yaml",
+                        device="mps", verbose=False,
+                    )[0]
+                    if res.boxes is None or res.boxes.xyxy is None:
+                        continue
+                    boxes = res.boxes.xyxy.cpu().numpy()
+                    ids = (res.boxes.id.cpu().numpy()
+                           if res.boxes.id is not None else None)
+                    clss = (res.boxes.cls.cpu().numpy()
+                            if res.boxes.cls is not None else None)
                 roi_y = a.roi_top * frame.shape[0]
                 pooled.extend(court_points(boxes, ids, clss, cams[ang],
                                            a.min_box_h, L, W,
