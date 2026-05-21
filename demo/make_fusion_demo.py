@@ -617,10 +617,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         vw.release()
         avg = total / max(n, 1)
-        ca, cb = (clf.cen if clf.cen else (None, None))
         print(f"done: {n} frames, avg {avg:.2f} players/frame -> {a.out}")
+        ca, cb = (getattr(clf, "cen", None) or (None, None))
         if ca:
-            print(f"team centroids HSV  A={tuple(round(v,1) for v in ca)} "
+            print(f"team centroids (brightness)  A={tuple(round(v,1) for v in ca)} "
                   f"B={tuple(round(v,1) for v in cb)}")
     finally:
         for c in caps.values():

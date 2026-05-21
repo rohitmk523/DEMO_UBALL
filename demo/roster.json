@@ -1,0 +1,30 @@
+{
+  "_note": "Stand-in roster from uball.ai game e06a1272-1382-4379-afc3-36914f80e2c2 (real player data) used to demo jersey-number -> player-identity mapping. Swap for the actual game's roster_team1/roster_team2 when available.",
+  "team_a": {
+    "color": "Gray",
+    "players": [
+      {"number": 1, "name": "Rene Basabe", "player_id": "32f9f952-da51-4b7d-815b-bbf726511c62"},
+      {"number": 2, "name": "Christian Herrera", "player_id": "0c8af841-536d-4278-830c-59a1522b5bfa"},
+      {"number": 4, "name": "Arnaldo Lopez", "player_id": "732c0b63-ab52-4393-8897-94f226fcf6a0"},
+      {"number": 5, "name": "Jeremy Ayala", "player_id": "138230b5-70a3-43e2-949c-ba452a06e061"},
+      {"number": 6, "name": "Javier Gonzalez", "player_id": "02d5ce6b-6124-4957-b80e-9505733b4521"},
+      {"number": 7, "name": "Andres Rios", "player_id": "cb36c117-7543-4965-ad9e-0c7c01e790fe"},
+      {"number": 8, "name": "Bosillo", "player_id": "1fd926d5-95b6-4533-8ad6-96aa1f2929ad"},
+      {"number": 9, "name": "Unamed", "player_id": "89cf70bb-b6f7-4021-9b19-e7d1a5febc31"}
+    ]
+  },
+  "team_b": {
+    "color": "Black",
+    "players": [
+      {"number": 3, "name": "Daniel Perez", "player_id": "74d5a494-ca26-48e3-91d6-878baacd6cff"},
+      {"number": 6, "name": "Andy Rubio", "player_id": "99c69cf6-4114-4fa3-b695-8099a6f84767"},
+      {"number": 8, "name": "Frankie Rodriguez", "player_id": "1bc66fad-348f-4092-97a0-3b4aa2517017"},
+      {"number": 10, "name": "Gio Lacayo", "player_id": "dd02c37c-2867-487b-8db6-cc18ea5afb85"},
+      {"number": 11, "name": "Michael Jones", "player_id": "db663d66-50c1-4db6-84b2-8110b3210686"},
+      {"number": 13, "name": "Rob Mendez", "player_id": "935f332d-3e1f-4196-bba7-3c3955d92ca8"},
+      {"number": 17, "name": "Lazaro Rodriguez", "player_id": "41b899c8-4971-48e5-b63c-7e4234de0fed"},
+      {"number": 22, "name": "Chris Prudent", "player_id": "9816b3ed-e850-4d44-bc74-608515e477b8"},
+      {"number": 23, "name": "Franco Valenzuela", "player_id": "f3f976ef-00e1-4e04-8b43-29fd3f9952bb"}
+    ]
+  }
+}

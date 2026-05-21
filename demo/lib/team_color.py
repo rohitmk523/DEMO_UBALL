@@ -319,8 +319,17 @@ class SigLIPTeamClassifier:
         inp = self._proc(images=rgb, return_tensors="pt")
         inp = {k: v.to(self.device) for k, v in inp.items()}
         with self._torch.no_grad():                    # type: ignore
-            emb = self._mdl.get_image_features(        # type: ignore
-                **inp).cpu().numpy()[0]
+            out = self._mdl.get_image_features(**inp)   # type: ignore
+        # transformers 5.x may return a ModelOutput rather than a tensor
+        if hasattr(out, "cpu"):
+            vec = out
+        else:
+            vec = getattr(out, "image_embeds", None)
+            if vec is None:
+                vec = getattr(out, "pooler_output", None)
+            if vec is None:
+                vec = out.last_hidden_state.mean(dim=1)
+        emb = vec.cpu().numpy()[0]
         emb = emb / (np.linalg.norm(emb) + 1e-9)
         self.embeds.setdefault(tid, []).append(emb)
         if len(self.embeds[tid]) > 24:
